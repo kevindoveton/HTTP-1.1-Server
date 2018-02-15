@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"strings"
 )
 
 // CRLF - Carriage Return, Line Feed
@@ -68,38 +67,103 @@ func response(conn net.Conn, reqHeaders map[string]string) string {
 func parseRequest(conn net.Conn) map[string]string {
 	// will listen for message to process ending in newline (\n)
 	// req, _ := bufio.NewReader(conn).ReadString('\n')
-	scanner := bufio.NewScanner(conn)
-	var pos int
-	var index int
+	// scanner := bufio.NewScanner(conn)
+	// var pos int
+	// var index int
+
+	// scanner.Scan()
+	// line := scanner.Text()
+
+	// // find method
+	// index = strings.Index(line, " ")
+	// headers["Method"] = line[0:index]
+
+	// // find path
+	// pos = index + 1
+	// index = strings.Index(line[pos:], " ") + pos
+	// headers["Path"] = line[pos:index]
+
+	// // find version
+	// pos = index + 1
+	// headers["Version"] = line[pos:]
 
 	headers := make(map[string]string)
-	scanner.Scan()
-	line := scanner.Text()
+	req := bufio.NewReader(conn)
 
-	// find method
-	index = strings.Index(line, " ")
-	headers["Method"] = line[0:index]
+	char, _ := req.ReadBytes(' ')
+	headers["Method"] = string(char)[:len(char)-1]
 
-	// find path
-	pos = index + 1
-	index = strings.Index(line[pos:], " ") + pos
-	headers["Path"] = line[pos:index]
+	char, _ = req.ReadBytes(' ')
+	headers["Path"] = string(char)[:len(char)-1]
 
-	// find version
-	pos = index + 1
-	headers["Version"] = line[pos:]
+	char, _ = req.ReadBytes('\n')
+	headers["Version"] = string(char)[:len(char)-1]
 
-	// breaks on the first empty line
-	// technically the message could have a body below!
-	for scanner.Scan() {
-		line = scanner.Text()
-		if line != "" {
-			keyIndex := strings.Index(line, ":")
-			headers[line[0:keyIndex]] = line[keyIndex+2:]
-		} else {
-			break
+	foundClrf := false
+	for !foundClrf {
+		key := make([]byte, 0)
+		value := make([]byte, 0)
+		foundKey := false
+		foundValue := false
+
+		// find the key
+		for !foundKey {
+			char, _ := req.ReadByte()
+
+			if char == ':' {
+				foundKey = true
+			} else {
+				key = AppendByte(key, char)
+			}
 		}
+
+		// find the value
+		// first check if it is a space
+		char, _ := req.ReadByte()
+		if char == '\n' {
+			foundValue = true
+		} else if char == ' ' {
+		}
+		for !foundValue {
+			char, _ := req.ReadByte()
+			if char == '\n' {
+				foundValue = true
+				value = AppendByte(value, char)
+			} else {
+				value = AppendByte(value, char)
+			}
+		}
+
+		foundClrf = true
+		fmt.Println(string(key))
+		fmt.Println(string(value))
 	}
 
 	return headers
+}
+
+// stripLeadingWhitespace - remove all leading whitespace
+func stripLeadingWhitespace(reader bufio.Reader) byte {
+	for true {
+		char, _ := reader.ReadByte()
+		if char != ' ' {
+			return char
+		}
+	}
+	return 0
+}
+
+// AppendByte - grow array
+func AppendByte(slice []byte, data ...byte) []byte {
+	m := len(slice)
+	n := m + len(data)
+	if n > cap(slice) { // if necessary, reallocate
+		// allocate double what's needed, for future growth.
+		newSlice := make([]byte, (n+1)*2)
+		copy(newSlice, slice)
+		slice = newSlice
+	}
+	slice = slice[0:n]
+	copy(slice[m:n], data)
+	return slice
 }
