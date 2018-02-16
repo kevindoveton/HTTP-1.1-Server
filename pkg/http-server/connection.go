@@ -38,7 +38,13 @@ func HandleConnection(conn net.Conn) {
 	// send new string back to client
 	conn.Write([]byte(response))
 
+	fmt.Println()
+	fmt.Println("Headers:")
+	PrettyPrint(headers)
+	fmt.Println()
+	fmt.Println("Body:")
 	fmt.Println(body)
+	fmt.Println()
 }
 
 func response(conn net.Conn, reqHeaders map[string]string) string {
@@ -133,8 +139,6 @@ func parseRequest(req *bufio.Reader) map[string]string {
 		}
 		headers[string(key)] = string(value)
 	}
-
-	PrettyPrint(headers)
 
 	return headers
 }
