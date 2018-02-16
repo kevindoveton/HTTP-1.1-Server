@@ -5,12 +5,22 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
+	"os"
 	"strconv"
+	"strings"
 )
 
 // CRLF - Carriage Return, Line Feed
 const CRLF = "\r\n"
+
+var webRoot = ""
+
+// SetWebRoot - set the web root dir
+func SetWebRoot(path string) {
+	webRoot = path
+}
 
 // HandleConnection - Handle a connection
 func HandleConnection(conn net.Conn) {
@@ -26,6 +36,13 @@ func HandleConnection(conn net.Conn) {
 
 	req := bufio.NewReader(conn)
 
+	r, _ := req.Peek(1)
+	if string(r) == "" {
+		response := sendError(500)
+		conn.Write([]byte(response))
+		return
+	}
+
 	// get a map of headers
 	headers := parseRequest(req)
 
@@ -33,7 +50,12 @@ func HandleConnection(conn net.Conn) {
 	body := parseBody(req, headers)
 
 	// sample response
-	response := response(conn, headers)
+	response, err := response(conn, headers)
+	if err != 0 {
+		response := sendError(err)
+		conn.Write([]byte(response))
+		return
+	}
 
 	// send new string back to client
 	conn.Write([]byte(response))
@@ -47,11 +69,31 @@ func HandleConnection(conn net.Conn) {
 	fmt.Println()
 }
 
-func response(conn net.Conn, reqHeaders map[string]string) string {
+func response(conn net.Conn, reqHeaders map[string]string) (string, int) {
 	var res bytes.Buffer
 
 	statusCode := "200 OK"
-	bodyContent := "i ♥ u"
+	path := strings.Join([]string{webRoot, reqHeaders["Path"]}, "")
+
+	// check if we can access the file
+	if fi, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return "", 404
+		} else {
+			return "", 500
+			// other error - maybe perms
+		}
+	} else {
+		// it exists, may be a directory
+		switch mode := fi.Mode(); {
+		case mode.IsDir():
+			return "", 405
+		}
+	}
+
+	dat, _ := ioutil.ReadFile(path)
+
+	bodyContent := string(dat)
 
 	headers := make(map[string]string)
 
@@ -75,13 +117,14 @@ func response(conn net.Conn, reqHeaders map[string]string) string {
 		res.WriteString(bodyContent)
 	}
 
-	return res.String()
+	return res.String(), 0
 }
 
 func parseRequest(req *bufio.Reader) map[string]string {
 	headers := make(map[string]string)
 
 	char, _ := req.ReadBytes(' ')
+	fmt.Println(string(char))
 	headers["Method"] = string(char)[:len(char)-1]
 
 	char, _ = req.ReadBytes(' ')
@@ -143,10 +186,15 @@ func parseRequest(req *bufio.Reader) map[string]string {
 	return headers
 }
 
+// parseBody - Parse the body of the message
 func parseBody(req *bufio.Reader, headers map[string]string) string {
 	contentLength, _ := strconv.Atoi(headers["Content-Length"])
 	body, _ := req.Peek(contentLength)
 	return string(body)
+}
+
+func sendError(status int) string {
+	return strings.Join([]string{"HTTP/1.1", strconv.Itoa(status), CRLF, strconv.Itoa(status)}, " ")
 }
 
 // stripLeadingWhitespace - remove all leading whitespace
@@ -174,6 +222,12 @@ func AppendByte(slice []byte, data ...byte) []byte {
 	slice = slice[0:n]
 	copy(slice[m:n], data)
 	return slice
+}
+
+func checkErr(e error) {
+	if e != nil {
+		panic(e)
+	}
 }
 
 func PrettyPrint(v interface{}) {

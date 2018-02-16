@@ -12,6 +12,8 @@ func main() {
 	// listen on all interfaces
 	ln, _ := net.Listen("tcp", ":8081")
 
+	connection.SetWebRoot("/web")
+
 	// run loop forever (or until ctrl-c)
 	for {
 		// wait for a connection
