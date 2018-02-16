@@ -3,14 +3,24 @@ package connection
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 )
 
 // CRLF - Carriage Return, Line Feed
 const CRLF = "\r\n"
+
+var webRoot = ""
+
+// SetWebRoot - set the web root dir
+func SetWebRoot(path string) {
+	webRoot = path
+}
 
 // HandleConnection - Handle a connection
 func HandleConnection(conn net.Conn) {
@@ -24,21 +34,66 @@ func HandleConnection(conn net.Conn) {
 	// output message received
 	fmt.Println("Message Received")
 
+	req := bufio.NewReader(conn)
+
+	r, _ := req.Peek(1)
+	if string(r) == "" {
+		response := sendError(500)
+		conn.Write([]byte(response))
+		return
+	}
+
 	// get a map of headers
-	headers := parseRequest(conn)
+	headers := parseRequest(req)
+
+	// get the body of request
+	body := parseBody(req, headers)
 
 	// sample response
-	response := response(conn, headers)
+	response, err := response(conn, headers)
+	if err != 0 {
+		response := sendError(err)
+		conn.Write([]byte(response))
+		return
+	}
 
 	// send new string back to client
 	conn.Write([]byte(response))
+
+	fmt.Println()
+	fmt.Println("Headers:")
+	PrettyPrint(headers)
+	fmt.Println()
+	fmt.Println("Body:")
+	fmt.Println(body)
+	fmt.Println()
 }
 
-func response(conn net.Conn, reqHeaders map[string]string) string {
+func response(conn net.Conn, reqHeaders map[string]string) (string, int) {
 	var res bytes.Buffer
 
 	statusCode := "200 OK"
-	bodyContent := "i ♥ u"
+	path := strings.Join([]string{webRoot, reqHeaders["Path"]}, "")
+
+	// check if we can access the file
+	if fi, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return "", 404
+		} else {
+			return "", 500
+			// other error - maybe perms
+		}
+	} else {
+		// it exists, may be a directory
+		switch mode := fi.Mode(); {
+		case mode.IsDir():
+			return "", 405
+		}
+	}
+
+	dat, _ := ioutil.ReadFile(path)
+
+	bodyContent := string(dat)
 
 	headers := make(map[string]string)
 
@@ -62,44 +117,120 @@ func response(conn net.Conn, reqHeaders map[string]string) string {
 		res.WriteString(bodyContent)
 	}
 
-	return res.String()
+	return res.String(), 0
 }
 
-func parseRequest(conn net.Conn) map[string]string {
-	// will listen for message to process ending in newline (\n)
-	// req, _ := bufio.NewReader(conn).ReadString('\n')
-	scanner := bufio.NewScanner(conn)
-	var pos int
-	var index int
-
+func parseRequest(req *bufio.Reader) map[string]string {
 	headers := make(map[string]string)
-	scanner.Scan()
-	line := scanner.Text()
 
-	// find method
-	index = strings.Index(line, " ")
-	headers["Method"] = line[0:index]
+	char, _ := req.ReadBytes(' ')
+	fmt.Println(string(char))
+	headers["Method"] = string(char)[:len(char)-1]
 
-	// find path
-	pos = index + 1
-	index = strings.Index(line[pos:], " ") + pos
-	headers["Path"] = line[pos:index]
+	char, _ = req.ReadBytes(' ')
+	headers["Path"] = string(char)[:len(char)-1]
 
-	// find version
-	pos = index + 1
-	headers["Version"] = line[pos:]
+	char, _ = req.ReadBytes('\n')
+	headers["Version"] = string(char)[:len(char)-2]
 
-	// breaks on the first empty line
-	// technically the message could have a body below!
-	for scanner.Scan() {
-		line = scanner.Text()
-		if line != "" {
-			keyIndex := strings.Index(line, ":")
-			headers[line[0:keyIndex]] = line[keyIndex+2:]
-		} else {
+	foundClrf := false
+	for !foundClrf {
+		key := make([]byte, 0)
+		value := make([]byte, 0)
+		foundKey := false
+		foundValue := false
+
+		charPeek, _ := req.Peek(2)
+		if string(charPeek) == "\r\n" {
+			// found clrf
+			req.Discard(2)
+			foundClrf = true
 			break
 		}
+
+		// find the key
+		for !foundKey {
+			char, _ := req.ReadByte()
+			if char == ':' {
+				foundKey = true
+				break
+			} else {
+				key = AppendByte(key, char)
+			}
+		}
+
+		// find the value
+		// first check if it is a space
+		char := stripLeadingWhitespace(req)
+		value = AppendByte(value, char)
+
+		for !foundValue {
+			char, _ := req.ReadByte()
+			if char == '\r' {
+				charPeek, _ := req.Peek(1)
+				if string(charPeek) == "\n" {
+					req.Discard(1) // discard \n
+					break
+				}
+			}
+			if char == '\n' {
+				foundValue = true
+				break
+			} else {
+				value = AppendByte(value, char)
+			}
+		}
+		headers[string(key)] = string(value)
 	}
 
 	return headers
+}
+
+// parseBody - Parse the body of the message
+func parseBody(req *bufio.Reader, headers map[string]string) string {
+	contentLength, _ := strconv.Atoi(headers["Content-Length"])
+	body, _ := req.Peek(contentLength)
+	return string(body)
+}
+
+func sendError(status int) string {
+	return strings.Join([]string{"HTTP/1.1", strconv.Itoa(status), CRLF, strconv.Itoa(status)}, " ")
+}
+
+// stripLeadingWhitespace - remove all leading whitespace
+// returns the first non space char
+func stripLeadingWhitespace(reader *bufio.Reader) byte {
+	for true {
+		char, _ := reader.ReadByte()
+		if char != ' ' {
+			return char
+		}
+	}
+	return 0
+}
+
+// AppendByte - grow array
+func AppendByte(slice []byte, data ...byte) []byte {
+	m := len(slice)
+	n := m + len(data)
+	if n > cap(slice) { // if necessary, reallocate
+		// allocate double what's needed, for future growth.
+		newSlice := make([]byte, (n+1)*2)
+		copy(newSlice, slice)
+		slice = newSlice
+	}
+	slice = slice[0:n]
+	copy(slice[m:n], data)
+	return slice
+}
+
+func checkErr(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
+
+func PrettyPrint(v interface{}) {
+	b, _ := json.MarshalIndent(v, "", "  ")
+	println(string(b))
 }
