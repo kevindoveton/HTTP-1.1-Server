@@ -3,6 +3,7 @@ package connection
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net"
 	"strconv"
@@ -23,14 +24,21 @@ func HandleConnection(conn net.Conn) {
 	// output message received
 	fmt.Println("Message Received")
 
+	req := bufio.NewReader(conn)
+
 	// get a map of headers
-	headers := parseRequest(conn)
+	headers := parseRequest(req)
+
+	// get the body of request
+	body := parseBody(req, headers)
 
 	// sample response
 	response := response(conn, headers)
 
 	// send new string back to client
 	conn.Write([]byte(response))
+
+	fmt.Println(body)
 }
 
 func response(conn net.Conn, reqHeaders map[string]string) string {
@@ -64,31 +72,8 @@ func response(conn net.Conn, reqHeaders map[string]string) string {
 	return res.String()
 }
 
-func parseRequest(conn net.Conn) map[string]string {
-	// will listen for message to process ending in newline (\n)
-	// req, _ := bufio.NewReader(conn).ReadString('\n')
-	// scanner := bufio.NewScanner(conn)
-	// var pos int
-	// var index int
-
-	// scanner.Scan()
-	// line := scanner.Text()
-
-	// // find method
-	// index = strings.Index(line, " ")
-	// headers["Method"] = line[0:index]
-
-	// // find path
-	// pos = index + 1
-	// index = strings.Index(line[pos:], " ") + pos
-	// headers["Path"] = line[pos:index]
-
-	// // find version
-	// pos = index + 1
-	// headers["Version"] = line[pos:]
-
+func parseRequest(req *bufio.Reader) map[string]string {
 	headers := make(map[string]string)
-	req := bufio.NewReader(conn)
 
 	char, _ := req.ReadBytes(' ')
 	headers["Method"] = string(char)[:len(char)-1]
@@ -97,7 +82,7 @@ func parseRequest(conn net.Conn) map[string]string {
 	headers["Path"] = string(char)[:len(char)-1]
 
 	char, _ = req.ReadBytes('\n')
-	headers["Version"] = string(char)[:len(char)-1]
+	headers["Version"] = string(char)[:len(char)-2]
 
 	foundClrf := false
 	for !foundClrf {
@@ -106,12 +91,20 @@ func parseRequest(conn net.Conn) map[string]string {
 		foundKey := false
 		foundValue := false
 
+		charPeek, _ := req.Peek(2)
+		if string(charPeek) == "\r\n" {
+			// found clrf
+			req.Discard(2)
+			foundClrf = true
+			break
+		}
+
 		// find the key
 		for !foundKey {
 			char, _ := req.ReadByte()
-
 			if char == ':' {
 				foundKey = true
+				break
 			} else {
 				key = AppendByte(key, char)
 			}
@@ -119,31 +112,42 @@ func parseRequest(conn net.Conn) map[string]string {
 
 		// find the value
 		// first check if it is a space
-		char, _ := req.ReadByte()
-		if char == '\n' {
-			foundValue = true
-		} else if char == ' ' {
-		}
+		char := stripLeadingWhitespace(req)
+		value = AppendByte(value, char)
+
 		for !foundValue {
 			char, _ := req.ReadByte()
+			if char == '\r' {
+				charPeek, _ := req.Peek(1)
+				if string(charPeek) == "\n" {
+					req.Discard(1) // discard \n
+					break
+				}
+			}
 			if char == '\n' {
 				foundValue = true
-				value = AppendByte(value, char)
+				break
 			} else {
 				value = AppendByte(value, char)
 			}
 		}
-
-		foundClrf = true
-		fmt.Println(string(key))
-		fmt.Println(string(value))
+		headers[string(key)] = string(value)
 	}
+
+	PrettyPrint(headers)
 
 	return headers
 }
 
+func parseBody(req *bufio.Reader, headers map[string]string) string {
+	contentLength, _ := strconv.Atoi(headers["Content-Length"])
+	body, _ := req.Peek(contentLength)
+	return string(body)
+}
+
 // stripLeadingWhitespace - remove all leading whitespace
-func stripLeadingWhitespace(reader bufio.Reader) byte {
+// returns the first non space char
+func stripLeadingWhitespace(reader *bufio.Reader) byte {
 	for true {
 		char, _ := reader.ReadByte()
 		if char != ' ' {
@@ -166,4 +170,9 @@ func AppendByte(slice []byte, data ...byte) []byte {
 	slice = slice[0:n]
 	copy(slice[m:n], data)
 	return slice
+}
+
+func PrettyPrint(v interface{}) {
+	b, _ := json.MarshalIndent(v, "", "  ")
+	println(string(b))
 }
