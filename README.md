@@ -19,6 +19,10 @@ func main() {
     res.SendString("Hello, World!")
   })
 
+  router.AddRoute("/file", func(req *httpServer.Request, res *httpServer.Response) {
+    res.SendFile("docs/HelloWorld.html")
+  })
+
   // error page
   router.AddRoute("*", func(req *httpServer.Request, res *httpServer.Response) {
     res.SetStatusCode(404)
@@ -26,12 +30,10 @@ func main() {
   })
 
   server := &httpServer.Server{
-    WebRoot: "/web",
     Port:    8081,
     Router:  router,
   }
 
   server.Run()
-
 }
 ```
