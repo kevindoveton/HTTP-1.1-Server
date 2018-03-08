@@ -12,20 +12,8 @@ const CRLF = "\r\n"
 
 
 
-// SetWebRoot - set the web root dir
-func (server *Server) SetWebRoot(path string) {
-	server.WebRoot = path
-}
-
-// GetWebRoot - return set web root
-func (server *Server) GetWebRoot() string {
-	return server.WebRoot
-}
-
-
 
 type Server struct {
-	WebRoot string
 	Port int
 	Router *Router
 }

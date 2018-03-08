@@ -51,63 +51,58 @@ func (res *Response) SendString(body string)  {
 		r.WriteString("\n")
 	}
 
-	//method, methodOk := reqHeaders["Method"]
-	//if methodOk && method != "HEAD" {
-		r.WriteString(CRLF)
-		r.WriteString(body)
-  //}
+  r.WriteString(CRLF)
+  r.WriteString(body)
+
 	res.NetConn.Write(r.Bytes())
 	return
 }
 
-func sendFile(conn net.Conn, reqHeaders map[string]string) (string, int) {
-	var res bytes.Buffer
-
-	statusCode := "200 OK"
-	//path := strings.Join([]string{server.WebRoot, reqHeaders["Path"]}, "")
-	path := ""
+func (res *Response) SendFile(path string) {
 
 	// check if we can access the file
 	if fi, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			return "", 404
+			res.SetStatusCode(404)
 		} else {
-			return "", 500
+			res.SetStatusCode(500)
 			// other error - maybe perms
 		}
+    res.Send()
+    return
 	} else {
 		// it exists, may be a directory
 		switch mode := fi.Mode(); {
-		case mode.IsDir():
-			return "", 405
-		}
+      case mode.IsDir():
+        res.SetStatusCode(405)
+        res.Send()
+        return
+    }
 	}
 
 	dat, _ := ioutil.ReadFile(path)
 
-	bodyContent := string(dat)
+	body := string(dat)
 
-	headers := make(map[string]string)
+  var r bytes.Buffer
+  headers := make(map[string]string)
 
-	headers["Content-Length"] = strconv.Itoa(len(bodyContent))
-	headers["Content-Type"] = "text/html; charset=utf-8"
+  headers["Content-Length"] = strconv.Itoa(len(body))
+  headers["Content-Type"] = "text/html; charset=utf-8"
 
-	res.WriteString("HTTP/1.1 ")
-	res.WriteString(statusCode)
-	res.WriteString(CRLF)
+  r.WriteString("HTTP/1.1 ")
+  r.WriteString(res.Status)
+  r.WriteString(CRLF)
 
-	for k := range headers {
-		res.WriteString(k)
-		res.WriteString(": ")
-		res.WriteString(headers[k])
-		res.WriteString("\n")
-	}
+  for k := range headers {
+    r.WriteString(k)
+    r.WriteString(": ")
+    r.WriteString(headers[k])
+    r.WriteString("\n")
+  }
 
-	method, methodOk := reqHeaders["Method"]
-	if methodOk && method != "HEAD" {
-		res.WriteString(CRLF)
-		res.WriteString(bodyContent)
-	}
+  r.WriteString(CRLF)
+  r.WriteString(body)
 
-	return res.String(), 0
+  res.NetConn.Write(r.Bytes())
 }

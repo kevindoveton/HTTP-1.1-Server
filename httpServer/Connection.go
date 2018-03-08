@@ -40,7 +40,7 @@ func (conn *Connection) Handle() {
 
 	conn.res = Response{
 	  conn.netConn,
-	  "200",
+	  "200 OK",
   }
 
 	conn.router.GetResponse(&conn.req, &conn.res)
