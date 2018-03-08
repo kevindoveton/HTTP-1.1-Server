@@ -6,7 +6,7 @@ A HTTP/1.1 server implemented in Go, there are definitely far better implementat
 package main
 
 import (
-	"github.com/kevindoveton/httpServer/httpServer"
+  "github.com/kevindoveton/httpServer/httpServer"
 )
 
 func main() {
@@ -26,12 +26,12 @@ func main() {
   })
 
   server := &httpServer.Server{
-    "/web",
-    8081,
-    router,
+    WebRoot: "/web",
+    Port:    8081,
+    Router:  router,
   }
 
-	server.Run()
+  server.Run()
 
 }
 ```
