@@ -18,6 +18,8 @@ func main() {
     res.SendFile("docs/HelloWorld.html")
   })
 
+  router.AddStaticRoute("/static", "docs")
+
   // error page
   router.AddRoute("*", func(req *httpServer.Request, res *httpServer.Response) {
     res.SetStatusCode(404)
