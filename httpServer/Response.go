@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"bytes"
   "strings"
+  "log"
+  "fmt"
 )
 
 type Response struct {
@@ -80,9 +82,13 @@ func (res *Response) SendFile(path string) {
     }
 	}
 
-	dat, _ := ioutil.ReadFile(path)
+	res.sendFile(path)
+}
 
-	body := string(dat)
+func (res *Response) sendFile(path string) {
+  dat, _ := ioutil.ReadFile(path)
+
+  body := string(dat)
 
   var r bytes.Buffer
   headers := make(map[string]string)
@@ -105,4 +111,44 @@ func (res *Response) SendFile(path string) {
   r.WriteString(body)
 
   res.NetConn.Write(r.Bytes())
+}
+
+func (res *Response) SendStatic(matchedPath string, dir string, actualPath string) {
+
+  path := strings.Replace(actualPath, matchedPath, dir, 1)
+
+  // check if it's a file and we can access the file
+  if fi, err := os.Stat(path); err != nil {
+    if os.IsNotExist(err) {
+      res.SetStatusCode(404)
+    } else {
+      res.SetStatusCode(500)
+      // other error - maybe perms
+    }
+    res.Send()
+    return
+  } else {
+    // it exists, may be a directory
+    switch mode := fi.Mode(); {
+    case mode.IsDir():
+      fmt.Print(path)
+      res.SendStaticListing(path)
+      return
+    }
+  }
+
+  res.sendFile(path)
+}
+
+func (res *Response) SendStaticListing(dir string) {
+  files, err := ioutil.ReadDir(dir)
+  if err != nil {
+    log.Fatal(err)
+  }
+  html := "<!DOCTYPE html><head></head><body><p>"
+  for _, f := range files {
+    html += "<a href=\""+f.Name()+"\">"+f.Name()+"</a><br>"
+  }
+  html += "</p></body>"
+  res.SendString(html)
 }

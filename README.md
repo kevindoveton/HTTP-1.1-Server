@@ -21,21 +21,27 @@ func main() {
   router := &httpServer.Router{}
   router.Init()
 
-  // home
+  // example of SendString
   router.AddRoute("/", func(req *httpServer.Request, res *httpServer.Response) {
     res.SendString("Hello, World!")
   })
 
+
+  // example of SendFile
   router.AddRoute("/file", func(req *httpServer.Request, res *httpServer.Response) {
     res.SendFile("docs/HelloWorld.html")
   })
 
-  // error page
+  // example of static directory
+  router.AddStaticRoute("/static", "docs")
+
+  // example of catch all - 404 in this case
   router.AddRoute("*", func(req *httpServer.Request, res *httpServer.Response) {
     res.SetStatusCode(404)
     res.SendString("Oh no! The page can't be found!")
   })
 
+  // start the server
   server := &httpServer.Server{
     Port:    8081,
     Router:  router,

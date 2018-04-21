@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/kevindoveton/httpServer/httpServer"
+  "github.com/kevindoveton/httpServer/httpServer"
 )
 
 func main() {
@@ -17,6 +17,8 @@ func main() {
   router.AddRoute("/file", func(req *httpServer.Request, res *httpServer.Response) {
     res.SendFile("docs/HelloWorld.html")
   })
+
+  router.AddStaticRoute("/static", "docs")
 
   // error page
   router.AddRoute("*", func(req *httpServer.Request, res *httpServer.Response) {

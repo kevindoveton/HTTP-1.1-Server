@@ -10,9 +10,6 @@ import (
 // CRLF - Carriage Return, Line Feed "\r\n"
 const CRLF = "\r\n"
 
-
-
-
 type Server struct {
 	Port int
 	Router *Router
